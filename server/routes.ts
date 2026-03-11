@@ -24,6 +24,27 @@ async function fetchJson(path: string) {
   return r.json();
 }
 
+async function resolveEmbedUrl(id: string, type: string, title: string, year: string): Promise<string> {
+  const isTv = type === 'tv' || type === 'series';
+  try {
+    if (title) {
+      const t = isTv ? 'series' : 'movie';
+      const omdb = await fetch(
+        `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&y=${year || ''}&type=${t}&apikey=trilogy`,
+        { signal: AbortSignal.timeout(8000) }
+      ).then(r => r.json());
+      if (omdb.Response === 'True' && omdb.imdbID) {
+        return isTv
+          ? `https://multiembed.mov/?video_id=${omdb.imdbID}&tmdb=0&s=1&e=1`
+          : `https://vidlink.pro/movie/${omdb.imdbID}`;
+      }
+    }
+  } catch {}
+  return isTv
+    ? `https://multiembed.mov/?video_id=${id}&tmdb=0&s=1&e=1`
+    : `https://vidlink.pro/movie/${id}`;
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   const q = (req: any) => new URLSearchParams(req.query as any).toString();
 
@@ -39,42 +60,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get('/player', async (req: any, res: any) => {
     const id    = req.query.id    as string;
-    const title = req.query.title as string;
-    const year  = req.query.year  as string;
-    const type  = req.query.type  as string;
+    const title = req.query.title as string || '';
+    const year  = req.query.year  as string || '';
+    const type  = req.query.type  as string || 'movie';
     if (!id) return res.status(400).send('Missing id');
 
-    let embedUrl = '';
-    try {
-      if (title) {
-        const t = type === 'tv' ? 'series' : 'movie';
-        const omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&y=${year||''}&type=${t}&apikey=trilogy`;
-        const omdbRes = await fetch(omdbUrl, { signal: AbortSignal.timeout(8000) });
-        const omdb = await omdbRes.json();
-        if (omdb.Response === 'True' && omdb.imdbID) {
-          embedUrl = t === 'series'
-            ? `https://multiembed.mov/?video_id=${omdb.imdbID}&tmdb=0&s=1&e=1`
-            : `https://vidlink.pro/movie/${omdb.imdbID}`;
-        }
-      }
-    } catch {}
-
-    if (!embedUrl) {
-      embedUrl = type === 'tv'
-        ? `https://123movienow.cc/tv/${id}/1/1`
-        : `https://123movienow.cc/movie/${id}`;
-    }
+    const embedUrl = await resolveEmbedUrl(id, type, title, year);
+    const safeTitle = title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+    res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
     res.send(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${title || 'Watch Now'}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${safeTitle || 'Watch Now'} — SkyPlus</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-    iframe { width: 100%; height: 100%; border: none; display: block; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
+    #bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px;
+      background: linear-gradient(to bottom, rgba(0,0,0,.85) 0%, transparent 100%);
+    }
+    #bar a {
+      color: #fff; text-decoration: none; font-size: 14px; font-weight: 500;
+      display: flex; align-items: center; gap: 6px; opacity: .85;
+    }
+    #bar a:hover { opacity: 1; }
+    #bar span { color: #fff; font-size: 14px; font-weight: 600; opacity: .9; }
+    iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: none; }
   </style>
 </head>
 <body>
@@ -83,33 +101,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     allowfullscreen
     referrerpolicy="no-referrer-when-downgrade">
   </iframe>
+  <div id="bar">
+    <a href="javascript:history.back()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </a>
+    ${safeTitle ? `<span>${safeTitle}</span>` : ''}
+  </div>
 </body>
 </html>`);
   });
 
   app.get('/stream/embed', async (req: any, res: any) => {
-    const title = req.query.title as string;
-    const year  = req.query.year  as string;
-    const type  = req.query.type  as string;
-    if (!title) return res.status(400).json({ error: 'Missing title' });
-    try {
-      const t = type === 'tv' ? 'series' : 'movie';
-      const omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&y=${year||''}&type=${t}&apikey=trilogy`;
-      const omdbRes = await fetch(omdbUrl, { signal: AbortSignal.timeout(10000) });
-      const omdb = await omdbRes.json();
-      if (omdb.Response === 'True' && omdb.imdbID) {
-        const imdbId = omdb.imdbID;
-        const embedUrl = t === 'series'
-          ? `https://multiembed.mov/?video_id=${imdbId}&tmdb=0&s=1&e=1`
-          : `https://vidlink.pro/movie/${imdbId}`;
-        const source = t === 'series' ? 'multiembed.mov' : 'vidlink.pro';
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        return res.json({ result: { embedUrl, imdbId, source } });
-      }
-      return res.status(404).json({ error: 'IMDB ID not found' });
-    } catch (err: any) {
-      return res.status(502).json({ error: err.message });
-    }
+    const id   = req.query.id    as string;
+    const title = req.query.title as string || '';
+    const year  = req.query.year  as string || '';
+    const type  = req.query.type  as string || 'movie';
+    if (!id && !title) return res.status(400).json({ error: 'Missing id or title' });
+    const embedUrl = await resolveEmbedUrl(id || title, type, title, year);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.json({ result: { embedUrl, source: embedUrl.includes('vidlink') ? 'vidlink.pro' : 'multiembed.mov' } });
   });
 
   app.get('/stream/lookup', async (req: any, res: any) => {
