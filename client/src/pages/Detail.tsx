@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import {
   Play, Plus, Check, Download, ChevronLeft,
-  Calendar, Clock, Globe, Film, X, ExternalLink
+  Calendar, Clock, Globe, Film, ExternalLink
 } from "lucide-react";
 import {
   getDetail, getStream, getCachedItem, cacheItem,
@@ -20,20 +20,20 @@ async function lookupItem(id: string): Promise<ContentItem> {
 import { addToMyList, removeFromMyList, isInMyList } from "@/lib/mylist";
 import ContentRow from "@/components/ContentRow";
 
+function buildPlayerUrl(id: string, item: ContentItem | null): string {
+  const type = item && !isMovie(item) ? 'tv' : 'movie';
+  const title = item?.title ? encodeURIComponent(item.title) : '';
+  const year = item ? encodeURIComponent(getYear(item)) : '';
+  return `/player?id=${id}&type=${type}&title=${title}&year=${year}`;
+}
+
 export default function Detail() {
   const { id } = useParams<{ id: string }>();
   const [location, navigate] = useLocation();
   const [item, setItem] = useState<ContentItem | null>(null);
-  const [playerOpen, setPlayerOpen] = useState(false);
   const [inList, setInList] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [showProviders, setShowProviders] = useState(false);
-
-  useEffect(() => {
-    if (location.includes('play=1') || window.location.search.includes('play=1')) {
-      setPlayerOpen(true);
-    }
-  }, [location]);
 
   useEffect(() => {
     if (!id) return;
@@ -69,6 +69,8 @@ export default function Detail() {
     retry: 1,
   });
 
+  const resolvedItem = item || lookedUpItem;
+
   useEffect(() => {
     if (lookedUpItem && !item) {
       setItem(lookedUpItem);
@@ -82,6 +84,12 @@ export default function Detail() {
       if (match) { setItem(match); cacheItem(match); }
     }
   }, [detail, item, id]);
+
+  useEffect(() => {
+    if (id && resolvedItem && (location.includes('play=1') || window.location.search.includes('play=1'))) {
+      window.location.href = buildPlayerUrl(id, resolvedItem);
+    }
+  }, [id, resolvedItem, location]);
 
   function toggleList() {
     if (!item) return;
@@ -98,9 +106,10 @@ export default function Detail() {
     }
   }
 
-  const streamUrl = detail
-    ? (item && !isMovie(item) ? detail.tv_stream_url : detail.stream_url)
-    : (item?.stream_url || streamData?.stream_url);
+  function handleWatch() {
+    if (!id) return;
+    window.location.href = buildPlayerUrl(id, resolvedItem || null);
+  }
 
   const downloadUrl = detail?.download_url || item?.download_url || streamData?.download_url;
   const providers = streamData?.all_providers || [];
@@ -141,31 +150,6 @@ export default function Detail() {
 
   return (
     <div className="min-h-screen bg-[#0A0F1C]">
-      {/* ── Fullscreen Player Modal ── */}
-      {playerOpen && streamUrl && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 bg-black/80 border-b border-white/10">
-            <button onClick={() => setPlayerOpen(false)} className="text-white hover:text-gray-300 flex items-center gap-2">
-              <ChevronLeft className="w-5 h-5" /> Back
-            </button>
-            <p className="text-white font-medium text-sm truncate max-w-xs">{item?.title}</p>
-            <button onClick={() => setPlayerOpen(false)} className="text-white hover:text-gray-300 p-1">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="flex-1 relative">
-            <iframe
-              src={streamUrl}
-              className="w-full h-full border-0"
-              allowFullScreen
-              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-              referrerPolicy="no-referrer"
-              title={item?.title}
-            />
-          </div>
-        </div>
-      )}
-
       {/* ── Hero Backdrop ── */}
       <div className="relative w-full h-[50vh] md:h-[65vh] overflow-hidden bg-[#0A0F1C]">
         {item?.poster && (
@@ -258,10 +242,9 @@ export default function Detail() {
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <button
-                onClick={() => setPlayerOpen(true)}
-                disabled={!streamUrl}
+                onClick={handleWatch}
                 data-testid="watch-btn"
-                className="flex items-center gap-2.5 px-6 py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-100 transition-all hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2.5 px-6 py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-100 transition-all hover:scale-105 shadow-lg"
               >
                 <Play className="w-5 h-5 fill-black" />
                 {detailLoading ? 'Loading...' : 'Watch Now'}
@@ -333,20 +316,6 @@ export default function Detail() {
               </div>
             )}
 
-            {/* Inline player (mobile) */}
-            {playerOpen && streamUrl && (
-              <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-white/10 shadow-2xl mb-6 md:hidden">
-                <iframe
-                  src={streamUrl}
-                  className="w-full h-full border-0"
-                  allowFullScreen
-                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                  referrerPolicy="no-referrer"
-                  title={item?.title}
-                />
-              </div>
-            )}
-
             {/* Source info */}
             {detail && (
               <p className="text-xs text-gray-600 mt-2">
@@ -355,26 +324,6 @@ export default function Detail() {
             )}
           </div>
         </div>
-
-        {/* Desktop inline player */}
-        {playerOpen && streamUrl && (
-          <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl mt-8 hidden md:block">
-            <iframe
-              src={streamUrl}
-              className="w-full h-full border-0"
-              allowFullScreen
-              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-              referrerPolicy="no-referrer"
-              title={item?.title}
-            />
-            <button
-              onClick={() => setPlayerOpen(false)}
-              className="absolute top-4 right-4 w-9 h-9 bg-black/60 hover:bg-black/90 border border-white/20 rounded-full flex items-center justify-center text-white transition-all z-10"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         {/* Related content */}
         {detail?.related && detail.related.filter(i => i.poster).length > 0 && (
