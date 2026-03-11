@@ -3,11 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import {
   Play, Plus, Check, Download, ChevronLeft,
-  Calendar, Clock, Globe, Film, Maximize2, X
+  Calendar, Clock, Globe, Film, X, ExternalLink
 } from "lucide-react";
 import {
-  getDetail, getCachedItem, cacheItem,
-  type ContentItem, type DetailResult,
+  getDetail, getStream, getCachedItem, cacheItem,
+  type ContentItem, type DetailResult, type StreamResult,
   getYear, getTypeLabel, isMovie
 } from "@/lib/api";
 import { addToMyList, removeFromMyList, isInMyList } from "@/lib/mylist";
@@ -20,13 +20,12 @@ export default function Detail() {
   const [playerOpen, setPlayerOpen] = useState(false);
   const [inList, setInList] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [showProviders, setShowProviders] = useState(false);
 
-  // Check if we should auto-open player
   useEffect(() => {
     if (location.includes('play=1')) setPlayerOpen(true);
   }, [location]);
 
-  // Load item from cache
   useEffect(() => {
     if (!id) return;
     const cached = getCachedItem(id);
@@ -40,6 +39,13 @@ export default function Detail() {
   const { data: detail, isLoading: detailLoading } = useQuery<DetailResult>({
     queryKey: ['/api/movie/detail', id],
     queryFn: () => getDetail(id!),
+    enabled: !!id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: streamData } = useQuery<StreamResult>({
+    queryKey: ['/api/movie/stream', id],
+    queryFn: () => getStream(id!, item && !isMovie(item) ? 'tv' : 'movie'),
     enabled: !!id,
     staleTime: 5 * 60 * 1000,
   });
@@ -62,6 +68,14 @@ export default function Detail() {
   const streamUrl = detail
     ? (item && !isMovie(item) ? detail.tv_stream_url : detail.stream_url)
     : item?.stream_url;
+
+  const downloadUrl = detail?.download_url || item?.download_url || streamData?.download_url;
+  const providers = streamData?.all_providers || [];
+
+  function handleDownload() {
+    if (!downloadUrl) return;
+    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+  }
 
   if (!item && !detailLoading) {
     return (
@@ -119,7 +133,6 @@ export default function Detail() {
         <div className="absolute inset-0 bg-gradient-to-r from-[#0A0F1C] via-[#0A0F1C]/50 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0A0F1C] via-transparent to-[#0A0F1C]/40" />
 
-        {/* Back button */}
         <button
           onClick={() => navigate(-1 as any)}
           className="absolute top-20 left-4 md:left-8 flex items-center gap-2 text-white/70 hover:text-white transition-colors bg-black/30 hover:bg-black/50 px-3 py-2 rounded-lg backdrop-blur-sm"
@@ -197,7 +210,7 @@ export default function Detail() {
             )}
 
             {/* Actions */}
-            <div className="flex flex-wrap items-center gap-3 mb-6">
+            <div className="flex flex-wrap items-center gap-3 mb-4">
               <button
                 onClick={() => setPlayerOpen(true)}
                 disabled={!streamUrl}
@@ -217,21 +230,64 @@ export default function Detail() {
                 {inList ? 'In My List' : 'My List'}
               </button>
 
-              {detail?.download_url && (
-                <a
-                  href={detail.download_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+              {downloadUrl && (
+                <button
+                  onClick={handleDownload}
                   data-testid="download-btn"
-                  className="flex items-center gap-2 px-5 py-3 bg-white/10 text-white font-semibold rounded-xl border border-white/20 hover:bg-white/20 transition-all"
+                  className="flex items-center gap-2 px-5 py-3 bg-green-600/20 text-green-400 font-semibold rounded-xl border border-green-500/30 hover:bg-green-600/30 transition-all"
                 >
                   <Download className="w-5 h-5" />
                   Download
-                </a>
+                </button>
+              )}
+
+              {providers.length > 0 && (
+                <button
+                  onClick={() => setShowProviders(p => !p)}
+                  className="flex items-center gap-2 px-4 py-3 bg-white/10 text-white/70 font-semibold rounded-xl border border-white/20 hover:bg-white/20 transition-all text-sm"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  {showProviders ? 'Hide' : 'More'} Providers
+                </button>
               )}
             </div>
 
-            {/* Inline player (collapsed by default) */}
+            {/* Providers list */}
+            {showProviders && providers.length > 0 && (
+              <div className="mb-6 p-4 rounded-xl bg-white/5 border border-white/10">
+                <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider font-semibold">Available on</p>
+                <div className="flex flex-col gap-2">
+                  {providers.map((p, i) => (
+                    <a
+                      key={i}
+                      href={p.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all group"
+                    >
+                      <span className="text-white text-sm font-medium">{p.name}</span>
+                      <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" />
+                    </a>
+                  ))}
+                  {downloadUrl && (
+                    <button
+                      onClick={handleDownload}
+                      className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-green-600/10 hover:bg-green-600/20 border border-green-500/20 transition-all group"
+                    >
+                      <span className="text-green-400 text-sm font-medium flex items-center gap-2">
+                        <Download className="w-4 h-4" /> Download Page
+                      </span>
+                      <ExternalLink className="w-4 h-4 text-green-400/60 group-hover:text-green-400 transition-colors" />
+                    </button>
+                  )}
+                </div>
+                {streamData?.note && (
+                  <p className="text-xs text-gray-500 mt-3">{streamData.note}</p>
+                )}
+              </div>
+            )}
+
+            {/* Inline player (mobile) */}
             {playerOpen && streamUrl && (
               <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-white/10 shadow-2xl mb-6 md:hidden">
                 <iframe
