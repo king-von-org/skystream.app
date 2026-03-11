@@ -1,13 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 
-const API = 'beratechapi-production.up.railway.app';
+const API = 'https://beratechapi-production.up.railway.app';
 
 async function proxy(path: string, res: any) {
   try {
     const response = await fetch(`${API}${path}`, {
       headers: { 'User-Agent': 'SkyPlus/1.0', 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(15000),
     });
     const data = await response.json();
     res.setHeader('Cache-Control', 'public, max-age=180');
