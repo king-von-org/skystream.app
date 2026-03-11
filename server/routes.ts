@@ -53,7 +53,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const omdb = await omdbRes.json();
         if (omdb.Response === 'True' && omdb.imdbID) {
           embedUrl = t === 'series'
-            ? `https://vidlink.pro/tv/${omdb.imdbID}/1/1`
+            ? `https://multiembed.mov/?video_id=${omdb.imdbID}&tmdb=0&s=1&e=1`
             : `https://vidlink.pro/movie/${omdb.imdbID}`;
         }
       }
@@ -100,10 +100,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (omdb.Response === 'True' && omdb.imdbID) {
         const imdbId = omdb.imdbID;
         const embedUrl = t === 'series'
-          ? `https://vidlink.pro/tv/${imdbId}/1/1`
+          ? `https://multiembed.mov/?video_id=${imdbId}&tmdb=0&s=1&e=1`
           : `https://vidlink.pro/movie/${imdbId}`;
+        const source = t === 'series' ? 'multiembed.mov' : 'vidlink.pro';
         res.setHeader('Cache-Control', 'public, max-age=3600');
-        return res.json({ result: { embedUrl, imdbId, source: 'vidlink.pro' } });
+        return res.json({ result: { embedUrl, imdbId, source } });
       }
       return res.status(404).json({ error: 'IMDB ID not found' });
     } catch (err: any) {
