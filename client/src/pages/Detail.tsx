@@ -10,6 +10,13 @@ import {
   type ContentItem, type DetailResult, type StreamResult,
   getYear, getTypeLabel, isMovie
 } from "@/lib/api";
+
+async function lookupItem(id: string): Promise<ContentItem> {
+  const res = await fetch(`/stream/lookup?id=${id}`);
+  if (!res.ok) throw new Error('not found');
+  const json = await res.json();
+  return json.result as ContentItem;
+}
 import { addToMyList, removeFromMyList, isInMyList } from "@/lib/mylist";
 import ContentRow from "@/components/ContentRow";
 
@@ -23,7 +30,9 @@ export default function Detail() {
   const [showProviders, setShowProviders] = useState(false);
 
   useEffect(() => {
-    if (location.includes('play=1')) setPlayerOpen(true);
+    if (location.includes('play=1') || window.location.search.includes('play=1')) {
+      setPlayerOpen(true);
+    }
   }, [location]);
 
   useEffect(() => {
@@ -36,19 +45,43 @@ export default function Detail() {
     if (item) setInList(isInMyList(item.id, item.type));
   }, [item]);
 
-  const { data: detail, isLoading: detailLoading } = useQuery<DetailResult>({
-    queryKey: ['/api/movie/detail', id],
+  const { data: detail, isLoading: detailLoading, isError: detailError } = useQuery<DetailResult>({
+    queryKey: ['/stream/detail', id],
     queryFn: () => getDetail(id!),
     enabled: !!id,
     staleTime: 5 * 60 * 1000,
+    retry: 2,
   });
 
   const { data: streamData } = useQuery<StreamResult>({
-    queryKey: ['/api/movie/stream', id],
+    queryKey: ['/stream/stream', id],
     queryFn: () => getStream(id!, item && !isMovie(item) ? 'tv' : 'movie'),
     enabled: !!id,
     staleTime: 5 * 60 * 1000,
+    retry: 2,
   });
+
+  const { data: lookedUpItem } = useQuery<ContentItem>({
+    queryKey: ['/stream/lookup', id],
+    queryFn: () => lookupItem(id!),
+    enabled: !!id && !item,
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (lookedUpItem && !item) {
+      setItem(lookedUpItem);
+      cacheItem(lookedUpItem);
+    }
+  }, [lookedUpItem, item]);
+
+  useEffect(() => {
+    if (detail?.related && !item) {
+      const match = detail.related.find(r => r.id === id);
+      if (match) { setItem(match); cacheItem(match); }
+    }
+  }, [detail, item, id]);
 
   function toggleList() {
     if (!item) return;
@@ -67,7 +100,7 @@ export default function Detail() {
 
   const streamUrl = detail
     ? (item && !isMovie(item) ? detail.tv_stream_url : detail.stream_url)
-    : item?.stream_url;
+    : (item?.stream_url || streamData?.stream_url);
 
   const downloadUrl = detail?.download_url || item?.download_url || streamData?.download_url;
   const providers = streamData?.all_providers || [];
@@ -77,7 +110,20 @@ export default function Detail() {
     window.open(downloadUrl, '_blank', 'noopener,noreferrer');
   }
 
-  if (!item && !detailLoading) {
+  if (detailLoading || (!item && !detail && !detailError)) {
+    return (
+      <div className="min-h-screen bg-[#0A0F1C] flex items-center justify-center">
+        <div className="text-center text-gray-400">
+          <div className="w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const streamOnlyUrl = detail?.stream_url || streamData?.stream_url;
+
+  if (!item && !streamOnlyUrl) {
     return (
       <div className="min-h-screen bg-[#0A0F1C] flex items-center justify-center">
         <div className="text-center text-gray-400">
