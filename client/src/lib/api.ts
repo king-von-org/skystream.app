@@ -85,17 +85,17 @@ async function get<T>(path: string): Promise<T> {
 }
 
 // ── API functions ──────────────────────────────────────────────────────────────
-export const getHome       = ()                         => get<HomeResult>('/api/movie/home');
-export const getTrending   = (page = 1)                 => get<ListResult>(`/api/movie/trending?page=${page}`);
-export const getMovies     = (page = 1)                 => get<ListResult>(`/api/movie/movies?page=${page}`);
-export const getSeries     = (page = 1)                 => get<ListResult>(`/api/movie/series?page=${page}`);
-export const searchContent = (query: string, page = 1) => get<SearchResult>(`/api/movie/search?query=${encodeURIComponent(query)}&page=${page}`);
-export const getDetail     = (id: string)               => get<DetailResult>(`/api/movie/detail?id=${id}`);
-export const getStream     = (id: string, type: 'movie' | 'tv') => get<StreamResult>(`/api/movie/stream?id=${id}&type=${type}`);
+export const getHome       = ()                         => get<HomeResult>('/stream/home');
+export const getTrending   = (page = 1)                 => get<ListResult>(`/stream/trending?page=${page}`);
+export const getMovies     = (page = 1)                 => get<ListResult>(`/stream/movies?page=${page}`);
+export const getSeries     = (page = 1)                 => get<ListResult>(`/stream/series?page=${page}`);
+export const searchContent = (query: string, page = 1) => get<SearchResult>(`/stream/search?query=${encodeURIComponent(query)}&page=${page}`);
+export const getDetail     = (id: string)               => get<DetailResult>(`/stream/detail?id=${id}`);
+export const getStream     = (id: string, type: 'movie' | 'tv') => get<StreamResult>(`/stream/stream?id=${id}&type=${type}`);
 
 export function filterContent(params: Record<string, string | number>) {
   const qs = new URLSearchParams(params as any).toString();
-  return get<FilterResult>(`/api/movie/filter?${qs}`);
+  return get<FilterResult>(`/stream/filter?${qs}`);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
