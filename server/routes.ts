@@ -37,6 +37,80 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get('/stream/stream',   (req, res) => proxy(`/api/movie/stream?${q(req)}`, res));
   app.get('/stream/download', (req, res) => proxy(`/api/movie/download?${q(req)}`, res));
 
+  app.get('/player', async (req: any, res: any) => {
+    const id    = req.query.id    as string;
+    const title = req.query.title as string;
+    const year  = req.query.year  as string;
+    const type  = req.query.type  as string;
+    if (!id) return res.status(400).send('Missing id');
+
+    let embedUrl = '';
+    try {
+      if (title) {
+        const t = type === 'tv' ? 'series' : 'movie';
+        const omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&y=${year||''}&type=${t}&apikey=trilogy`;
+        const omdbRes = await fetch(omdbUrl, { signal: AbortSignal.timeout(8000) });
+        const omdb = await omdbRes.json();
+        if (omdb.Response === 'True' && omdb.imdbID) {
+          embedUrl = t === 'series'
+            ? `https://vidlink.pro/tv/${omdb.imdbID}/1/1`
+            : `https://vidlink.pro/movie/${omdb.imdbID}`;
+        }
+      }
+    } catch {}
+
+    if (!embedUrl) {
+      embedUrl = type === 'tv'
+        ? `https://123movienow.cc/tv/${id}/1/1`
+        : `https://123movienow.cc/movie/${id}`;
+    }
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${title || 'Watch Now'}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    iframe { width: 100%; height: 100%; border: none; display: block; }
+  </style>
+</head>
+<body>
+  <iframe src="${embedUrl}"
+    allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+    allowfullscreen
+    referrerpolicy="no-referrer-when-downgrade">
+  </iframe>
+</body>
+</html>`);
+  });
+
+  app.get('/stream/embed', async (req: any, res: any) => {
+    const title = req.query.title as string;
+    const year  = req.query.year  as string;
+    const type  = req.query.type  as string;
+    if (!title) return res.status(400).json({ error: 'Missing title' });
+    try {
+      const t = type === 'tv' ? 'series' : 'movie';
+      const omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&y=${year||''}&type=${t}&apikey=trilogy`;
+      const omdbRes = await fetch(omdbUrl, { signal: AbortSignal.timeout(10000) });
+      const omdb = await omdbRes.json();
+      if (omdb.Response === 'True' && omdb.imdbID) {
+        const imdbId = omdb.imdbID;
+        const embedUrl = t === 'series'
+          ? `https://vidlink.pro/tv/${imdbId}/1/1`
+          : `https://vidlink.pro/movie/${imdbId}`;
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        return res.json({ result: { embedUrl, imdbId, source: 'vidlink.pro' } });
+      }
+      return res.status(404).json({ error: 'IMDB ID not found' });
+    } catch (err: any) {
+      return res.status(502).json({ error: err.message });
+    }
+  });
+
   app.get('/stream/lookup', async (req: any, res: any) => {
     const id = req.query.id as string;
     if (!id) return res.status(400).json({ error: 'Missing id' });
