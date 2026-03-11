@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 
-const API = 'https://beratech-api.replit.app';
+const API = 'beratechapi-production.up.railway.app';
 
 async function proxy(path: string, res: any) {
   try {
